@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="io.ktor.server.Application"         level="INFO"/>
+    <logger name="io.ktor.server.plugins.calllogging" level="INFO"/>
+    <logger name="com.mangaapi"                       level="INFO"/>
+    <!-- Suppress OkHttp wire-level noise unless debugging -->
+    <logger name="okhttp3"                            level="WARN"/>
+    <logger name="org.koitharu"                       level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
