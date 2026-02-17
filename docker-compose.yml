@@ -1,0 +1,66 @@
+services:
+
+  api-manga:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Target stage "runtime" — skip builder dari cache jika sudah ada
+      target: runtime
+
+    image: api-manga:2.0.0
+
+    container_name: api-manga
+
+    restart: unless-stopped
+
+    ports:
+      - "${HOST_PORT:-8080}:${PORT:-8080}"
+
+    environment:
+      # ── Server ──────────────────────────────────────────────────────────────
+      PORT: ${PORT:-8080}
+
+      # ── Persistence ─────────────────────────────────────────────────────────
+      # Path DALAM container. Volume di bawah map folder host → path ini.
+      API_KEYS_FILE: /app/data/api_keys.json
+
+      # ── CORS ────────────────────────────────────────────────────────────────
+      # Ubah ke domain kamu di production, e.g. "https://app.contoh.com"
+      # Biarkan kosong / tidak di-set untuk allow all (*) di development
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
+      # ── Cache TTL (detik) ────────────────────────────────────────────────────
+      CACHE_TTL_LIST_SEC:   ${CACHE_TTL_LIST_SEC:-300}
+      CACHE_TTL_DETAIL_SEC: ${CACHE_TTL_DETAIL_SEC:-600}
+      CACHE_TTL_TAGS_SEC:   ${CACHE_TTL_TAGS_SEC:-3600}
+      CACHE_TTL_PAGES_SEC:  ${CACHE_TTL_PAGES_SEC:-1800}
+
+    volumes:
+      # Persist API keys supaya tidak hilang saat container di-restart/update
+      - api_keys_data:/app/data
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-8080}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # Beri waktu startup (JVM + 1200+ parser init)
+
+    # Batasi resource agar tidak makan RAM semua jika ada parser yang bocor
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  # Named volume untuk API keys — data tetap ada meski container dihapus
+  api_keys_data:
+    driver: local
