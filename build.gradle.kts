@@ -50,7 +50,7 @@ dependencies {
     // NOTE: Pinning to a raw commit hash (e.g. :5ebde38d...) requires JitPack to have
     // previously built that exact commit. If JitPack hasn't built it yet the resolution
     // times out. master-SNAPSHOT always resolves because JitPack builds it continuously.
-    implementation("com.github.YakaTeam:kotatsu-parsers:master-SNAPSHOT")
+    implementation("com.github.YakaTeam:kotatsu-parsers:b3423bc69b")
 
     // ── Network ──────────────────────────────────────────────────────────────
     implementation("com.squareup.okhttp3:okhttp:$okhttpVersion")
@@ -65,6 +65,15 @@ dependencies {
     // ── Parser dependencies ──────────────────────────────────────────────────
     implementation("org.jsoup:jsoup:1.21.2")
     implementation("androidx.collection:collection-jvm:1.5.0")  // no Android runtime needed
+
+    // ── Testing ──────────────────────────────────────────────────────────────
+    testImplementation(kotlin("test"))
+    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 application {

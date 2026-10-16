@@ -4,15 +4,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # Target stage "runtime" — skip builder dari cache jika sudah ada
       target: runtime
 
     image: api-manga:2.0.0
-
     container_name: api-manga
-
     restart: unless-stopped
 
+    # If running standalone without nginx, expose directly on HOST_PORT
     ports:
       - "${HOST_PORT:-8080}:${PORT:-8080}"
 
@@ -21,22 +19,19 @@ services:
       PORT: ${PORT:-8080}
 
       # ── Persistence ─────────────────────────────────────────────────────────
-      # Path DALAM container. Volume di bawah map folder host → path ini.
       API_KEYS_FILE: /app/data/api_keys.json
 
       # ── CORS ────────────────────────────────────────────────────────────────
-      # Ubah ke domain kamu di production, e.g. "https://app.contoh.com"
-      # Biarkan kosong / tidak di-set untuk allow all (*) di development
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
 
-      # ── Cache TTL (detik) ────────────────────────────────────────────────────
+      # ── Cache Configuration ─────────────────────────────────────────────────
+      CACHE_MAX_ENTRIES:    ${CACHE_MAX_ENTRIES:-5000}
       CACHE_TTL_LIST_SEC:   ${CACHE_TTL_LIST_SEC:-300}
       CACHE_TTL_DETAIL_SEC: ${CACHE_TTL_DETAIL_SEC:-600}
       CACHE_TTL_TAGS_SEC:   ${CACHE_TTL_TAGS_SEC:-3600}
       CACHE_TTL_PAGES_SEC:  ${CACHE_TTL_PAGES_SEC:-1800}
 
     volumes:
-      # Persist API keys supaya tidak hilang saat container di-restart/update
       - api_keys_data:/app/data
 
     healthcheck:
@@ -44,9 +39,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s   # Beri waktu startup (JVM + 1200+ parser init)
+      start_period: 60s
 
-    # Batasi resource agar tidak makan RAM semua jika ada parser yang bocor
     deploy:
       resources:
         limits:
@@ -60,7 +54,24 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  # Optional production reverse proxy (Level 2 Architecture)
+  # Provides disk caching for image proxy (/api/proxy) & gzip compression
+  nginx:
+    image: nginx:alpine
+    container_name: api-manga-nginx
+    restart: unless-stopped
+    profiles: ["proxy", "all"]
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_cache:/var/cache/nginx/images
+    depends_on:
+      api-manga:
+        condition: service_healthy
+
 volumes:
-  # Named volume untuk API keys — data tetap ada meski container dihapus
   api_keys_data:
+    driver: local
+  nginx_cache:
     driver: local

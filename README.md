@@ -24,12 +24,13 @@
 |  | Fitur | Deskripsi |
 |---|---|---|
 | 🌐 | **1200+ Sources** | Manga, manhwa, manhua dari puluhan negara & bahasa |
-| 🔑 | **API Key Auth** | 3 tier: `READ` · `FULL` · `ADMIN` + rate limiting per tier |
-| ⚡ | **Response Cache** | TTL cache in-memory, kurangi beban ke upstream |
+| ⚡ | **SingleFlight & LRU Cache** | Request coalescing anti-thundering herd + bounded LRU cache (RAM-safe) |
+| 🔑 | **High-Perf Auth** | In-memory key validation dengan background atomic persistence |
+| 🚦 | **Tiered Rate Limiter** | Rate limiting otomatis per-key (`READ` 60/m, `FULL` 120/m, `ADMIN` unlimited) |
 | 🔍 | **Multi-search** | Cari di beberapa source sekaligus secara paralel |
-| 🛡️ | **Image Proxy** | SSRF-protected proxy dengan referer injection otomatis |
-| 🎛️ | **Admin API** | Kelola key, monitor cache, lihat status server |
-| 🐳 | **Docker Ready** | Multi-stage Dockerfile + docker-compose siap pakai |
+| 🛡️ | **Image Proxy + Edge Cache** | SSRF-protected proxy + HTTP cache headers & optional Nginx edge disk cache |
+| 🎛️ | **Admin API** | Kelola key, monitor cache stats, lihat status server |
+| 🐳 | **Docker & Nginx Stack** | Multi-stage Dockerfile + Docker Compose dengan Nginx edge proxy profile |
 | 📄 | **Landing Page** | Dokumentasi interaktif langsung di `GET /` |
 
 ---
@@ -187,14 +188,19 @@ curl -H "X-Api-Key: mapi_xxx" http://localhost:8080/admin/me
 
 ## 🐳 Docker Compose
 
+### Mode Standalone (Ktor Direct)
 ```bash
-docker compose up -d                # Jalankan di background
+docker compose up -d                # Jalankan Ktor langsung di HOST_PORT (default 8080)
 docker compose logs -f api-manga    # Log real-time
 docker compose down                 # Stop
-docker compose up -d --build        # Rebuild setelah ubah kode
-docker compose restart api-manga    # Restart setelah ubah .env
-docker compose down -v              # ⚠️ Hapus container + volume (keys hilang!)
 ```
+
+### Mode Produksi (Ktor + Nginx Edge Cache)
+Direkomendasikan untuk traffic tinggi. Nginx akan meng-cache gambar chapter di disk SSD dan menyajikannya langsung tanpa membebani memori JVM.
+```bash
+docker compose --profile proxy up -d
+```
+Request ke `http://localhost/api/proxy?...` akan di-cache selama 24 jam di Nginx disk cache.
 
 > [!TIP]
 > API key disimpan di Docker **named volume** `api_keys_data` — data tetap ada meski container di-restart atau di-rebuild. Hanya hilang jika `docker compose down -v`.
@@ -213,10 +219,12 @@ cp .env.example .env  # lalu sesuaikan
 | `HOST_PORT` | `8080` | Port yang di-expose ke host |
 | `API_KEYS_FILE` | `data/api_keys.json` | Path penyimpanan API key |
 | `ALLOWED_ORIGINS` | `*` | CORS — isi domain kamu di production |
+| `CACHE_MAX_ENTRIES` | `5000` | Batas maksimum entri cache di RAM (LRU eviction) |
 | `CACHE_TTL_LIST_SEC` | `300` | TTL cache list/browse (detik) |
 | `CACHE_TTL_DETAIL_SEC` | `600` | TTL cache detail manga |
 | `CACHE_TTL_TAGS_SEC` | `3600` | TTL cache tags/genre |
 | `CACHE_TTL_PAGES_SEC` | `1800` | TTL cache URL halaman |
+| `NGINX_PORT` | `80` | Port HTTP Nginx edge reverse proxy |
 
 ---
 

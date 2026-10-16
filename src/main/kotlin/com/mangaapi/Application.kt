@@ -45,6 +45,7 @@ fun Application.module() {
     responseCache = ResponseCache()
     val mangaContext = MangaLoaderContextImpl()
 
+    install(ApiKeyExtractorPlugin)
     configureSerialization()
     configureCors()
     configureAuth()
@@ -151,16 +152,20 @@ fun Application.configureAuth() {
  * Ktor's BearerTokenAuth reads Authorization: Bearer <token>.
  * We also check X-Api-Key header and ?api_key= query param via a custom plugin below.
  */
-private fun resolveKey(token: String, minTier: KeyTier): Principal? {
+class InsufficientTierException : RuntimeException("Tier API key tidak mencukupi untuk endpoint ini.")
+
+private fun resolveKey(token: String, minTier: KeyTier): ApiKeyPrincipal? {
     val apiKey = keyManager.validate(token) ?: return null
     if (!apiKey.active) return null
     // Check tier level (ADMIN >= FULL >= READ)
-    if (apiKey.tier.level < minTier.level) return null
+    if (apiKey.tier.level < minTier.level) {
+        throw InsufficientTierException()
+    }
     return ApiKeyPrincipal(apiKey)
 }
 
 /** Custom principal that carries the validated ApiKey */
-class ApiKeyPrincipal(val apiKey: com.mangaapi.auth.ApiKey) : Principal
+data class ApiKeyPrincipal(val apiKey: com.mangaapi.auth.ApiKey)
 
 // Tier level helper — higher = more permissions
 val KeyTier.level: Int get() = when (this) {
@@ -194,6 +199,9 @@ val ApiKeyExtractorPlugin = createApplicationPlugin("ApiKeyExtractor") {
 // ── Status Pages ──────────────────────────────────────────────────────────────
 private fun Application.configureStatusPages() {
     install(StatusPages) {
+        exception<InsufficientTierException> { call, cause ->
+            call.respond(HttpStatusCode.Forbidden, ErrorDto(cause.message ?: "Tier API key tidak mencukupi untuk endpoint ini."))
+        }
         exception<Throwable> { call, cause ->
             call.application.log.error("Unhandled: ${cause.message}", cause)
             call.respond(
@@ -228,18 +236,28 @@ private fun Application.configureRateLimiting() {
     install(RateLimit) {
         register(RateLimitName("read")) {
             rateLimiter(limit = 60, refillPeriod = 1.minutes)
+            requestWeight { call, _ ->
+                if (call.principal<ApiKeyPrincipal>()?.apiKey?.tier == KeyTier.ADMIN) 0 else 1
+            }
             requestKey { call ->
-                call.request.headers["X-Api-Key"]
+                call.principal<ApiKeyPrincipal>()?.apiKey?.key
+                    ?: call.attributes.getOrNull(extractedApiKeyAttr)
+                    ?: call.request.headers["X-Api-Key"]
                     ?: call.request.queryParameters["api_key"]
-                    ?: call.request.headers["Authorization"]?.removePrefix("Bearer ")
+                    ?: call.request.headers["Authorization"]?.removePrefix("Bearer ")?.trim()
                     ?: call.request.headers["X-Forwarded-For"]?.split(",")?.first()?.trim()
                     ?: call.request.local.remoteHost
             }
         }
         register(RateLimitName("full")) {
             rateLimiter(limit = 120, refillPeriod = 1.minutes)
+            requestWeight { call, _ ->
+                if (call.principal<ApiKeyPrincipal>()?.apiKey?.tier == KeyTier.ADMIN) 0 else 1
+            }
             requestKey { call ->
-                call.request.headers["X-Api-Key"]
+                call.principal<ApiKeyPrincipal>()?.apiKey?.key
+                    ?: call.attributes.getOrNull(extractedApiKeyAttr)
+                    ?: call.request.headers["X-Api-Key"]
                     ?: call.request.queryParameters["api_key"]
                     ?: call.request.local.remoteHost
             }
